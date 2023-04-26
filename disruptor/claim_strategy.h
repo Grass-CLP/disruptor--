@@ -120,6 +120,7 @@ class MultiThreadedStrategy {
     if (last_consumer_sequence_.sequence() < wrap_point) {
       while (GetMinimumSequence(dependents) < wrap_point) {
         // TODO: configurable yield strategy
+        DumpMinimumSequence(dependents, wrap_point);
         std::this_thread::yield();
       }
     }

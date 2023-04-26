@@ -27,8 +27,10 @@
 #define DISRUPTOR_SEQUENCER_H_  // NOLINT
 
 #include "disruptor/claim_strategy.h"
-#include "disruptor/wait_strategy.h"
 #include "disruptor/sequence_barrier.h"
+#include "disruptor/wait_strategy.h"
+#include <atomic>
+#include <future>
 
 namespace disruptor {
 
@@ -38,15 +40,31 @@ template <typename T, size_t N = kDefaultRingBufferSize,
           typename C = kDefaultClaimStrategy, typename W = kDefaultWaitStrategy>
 class Sequencer {
  public:
+  using RingBufferT = RingBuffer<T, N> ;
+  using TType = T;
+  using Barrier = SequenceBarrier<W>;
+
+  const int DELETE_SEQUENCES_DELAY = 1;
+
+ public:
   // Construct a Sequencer with the selected strategies.
-  Sequencer(std::array<T, N> events) : ring_buffer_(events) {}
+  //  Sequencer(std::array<T, N> events) : ring_buffer_(events) {}
+  Sequencer() = default;
 
   // Set the sequences that will gate publishers to prevent the buffer
   // wrapping.
   //
   // @param sequences to be gated on.
-  void set_gating_sequences(const std::vector<Sequence*>& sequences) {
-    gating_sequences_ = sequences;
+  //  void set_gating_sequences(const std::vector<Sequence*>& sequences) {
+  //    gating_sequences_ = sequences;
+  //  }
+
+  void addGatingSequences(Sequence* sequence) {
+    gating_sequences_.addGatingSequences(sequence);
+  }
+
+  void delGatingSequence(Sequence* sequence) {
+    gating_sequences_.delGatingSequence(sequence);
   }
 
   // Create a {@link SequenceBarrier} that gates on the cursor and a list of
@@ -58,10 +76,16 @@ class Sequencer {
     return SequenceBarrier<W>(cursor_, dependents);
   }
 
+  SequenceBarrier<W> NewBarrier() {
+    return SequenceBarrier<W>(cursor_);
+  }
+
   // Get the value of the cursor indicating the published sequence.
   //
   // @return value of the cursor for events that have been published.
   int64_t GetCursor() { return cursor_.sequence(); }
+
+  Sequence &GetSequence() { return cursor_; }
 
   // Has the buffer capacity left to allocate another sequence. This is a
   // concurrent method so the response should only be taken as an indication
@@ -69,7 +93,7 @@ class Sequencer {
   //
   // @return true if the buffer has the capacity to allocated another event.
   bool HasAvailableCapacity() {
-    return claim_strategy_.HasAvailableCapacity(gating_sequences_);
+    return claim_strategy_.HasAvailableCapacity(gating_sequences_.get());
   }
 
   // Claim the next batch of sequence numbers for publishing.
@@ -77,7 +101,7 @@ class Sequencer {
   // @param delta  the requested number of sequences.
   // @return the maximal claimed sequence
   int64_t Claim(size_t delta = 1) {
-    return claim_strategy_.IncrementAndGet(gating_sequences_, delta);
+    return claim_strategy_.IncrementAndGet(gating_sequences_.get(), delta);
   }
 
   // Publish an event and make it visible to {@link EventProcessor}s.
@@ -101,7 +125,7 @@ class Sequencer {
 
   W wait_strategy_;
 
-  std::vector<Sequence*> gating_sequences_;
+  Sequences gating_sequences_;
 
   DISALLOW_COPY_MOVE_AND_ASSIGN(Sequencer);
 };

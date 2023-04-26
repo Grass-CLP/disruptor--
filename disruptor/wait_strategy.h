@@ -32,6 +32,8 @@
 #include <thread>
 #include <condition_variable>
 #include <vector>
+#include <mutex>
+#include <functional>
 
 #include "disruptor/sequence.h"
 

@@ -48,7 +48,8 @@ class RingBuffer {
   // entries in the ring.
   // @param wait_strategy_option waiting strategy employed by
   // processors_to_track waiting in entries becoming available.
-  RingBuffer(const std::array<T, N>& events) : events_(events) {}
+//  RingBuffer(const std::array<T, N>& events) : events_(events) {}
+  RingBuffer() = default;
 
   static_assert(((N > 0) && ((N & (~N + 1)) == N)),
                 "RingBuffer's size must be a positive power of 2");

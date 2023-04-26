@@ -34,21 +34,30 @@
 
 namespace disruptor {
 
+static Sequences EMPTY_SEQUENCES;
 template <typename W = kDefaultWaitStrategy>
 class SequenceBarrier {
  public:
+  // only cursor
+  SequenceBarrier(const Sequence& cursor)
+      : cursor_(cursor), sequences_(EMPTY_SEQUENCES), alerted_(false) {}
+
   SequenceBarrier(const Sequence& cursor,
-                  const std::vector<Sequence*>& dependents)
-      : cursor_(cursor), dependents_(dependents), alerted_(false) {}
+                  Sequences& dependents)
+      : cursor_(cursor), sequences_(dependents), alerted_(false) {}
+
+  inline void set_sequences(Sequences& dependents) {
+      sequences_ = dependents;
+  }
 
   int64_t WaitFor(const int64_t& sequence) {
-    return wait_strategy_.WaitFor(sequence, cursor_, dependents_, alerted_);
+    return wait_strategy_.WaitFor(sequence, cursor_, sequences_.get(), alerted_);
   }
 
   template <class R, class P>
   int64_t WaitFor(const int64_t& sequence,
                   const std::chrono::duration<R, P>& timeout) {
-    return wait_strategy_.WaitFor(sequence, cursor_, dependents_, alerted_,
+    return wait_strategy_.WaitFor(sequence, cursor_, sequences_.get(), alerted_,
                                   timeout);
   }
 
@@ -65,7 +74,8 @@ class SequenceBarrier {
  private:
   W wait_strategy_;
   const Sequence& cursor_;
-  std::vector<Sequence*> dependents_;
+//  std::vector<Sequence*> dependents_;
+  Sequences &sequences_;
   std::atomic<bool> alerted_;
 };
 

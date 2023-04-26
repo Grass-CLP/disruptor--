@@ -1,2 +1,7 @@
+cmake-build-*
+.idea
+.vscode
 build
-cmake
+null.d
+tmp
+autom4te.cache

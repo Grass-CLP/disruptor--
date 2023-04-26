@@ -39,7 +39,7 @@ namespace disruptor {
 namespace test {
 
 struct SequencerFixture {
-  SequencerFixture() : events({1L, 2L, 3L, 4L}), sequencer(events){};
+  SequencerFixture() : events({1L, 2L, 3L, 4L}), sequencer(){};
 
   void FillBuffer() {
     for (int i = 0; i < RING_BUFFER_SIZE; i++) {

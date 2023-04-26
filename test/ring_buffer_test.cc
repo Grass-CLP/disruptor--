@@ -35,7 +35,7 @@ namespace disruptor {
 namespace test {
 
 struct RingBufferFixture {
-  RingBufferFixture() : ring_buffer(initArray()) {}
+  RingBufferFixture() : ring_buffer() {}
 
   size_t f(const size_t i) { return i + 1; }
 

@@ -40,7 +40,7 @@ struct StrategyFixture {
   Sequence sequence_1;
   Sequence sequence_2;
   Sequence sequence_3;
-  std::vector<Sequence*> dependents;
+  std::vector<Sequence*> dependents;  // empty
   W strategy;
   std::atomic<bool> alerted;
 

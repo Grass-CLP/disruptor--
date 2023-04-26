@@ -33,9 +33,12 @@
 #ifndef DISRUPTOR_SEQUENCE_H_  // NOLINT
 #define DISRUPTOR_SEQUENCE_H_  // NOLINT
 
-#include <atomic>
-
 #include "disruptor/utils.h"
+#include <algorithm>
+#include <atomic>
+#include <future>
+#include <limits.h>
+#include <vector>
 
 namespace disruptor {
 
@@ -98,6 +101,114 @@ int64_t GetMinimumSequence(const std::vector<Sequence*>& sequences) {
   }
 
   return minimum;
+};
+
+void DumpMinimumSequence(const std::vector<Sequence*>& sequences,
+                         const int64_t& wrap_point) {
+  int64_t minimum = LONG_MAX;
+
+  Sequence* min_address = nullptr;
+  for (Sequence* sequence_ : sequences) {
+    const int64_t sequence = sequence_->sequence();
+    if (sequence < minimum) {
+      minimum = sequence;
+      min_address = sequence_;
+    }
+  }
+
+  if (min_address) {
+    std::cerr << "minimum seq: " << minimum << " address: " << min_address
+              << std::endl;
+  }
+}
+
+static const int SEQUENCES_MAX_SEQS = 1024;
+/**
+ * Sequences thread safety maybe. with delay delete
+ */
+class Sequences {
+  static_assert(((SEQUENCES_MAX_SEQS > 0) &&
+                 ((SEQUENCES_MAX_SEQS & (~SEQUENCES_MAX_SEQS + 1)) ==
+                  SEQUENCES_MAX_SEQS)),
+                "SEQUENCES_MAX_SEQS must be a positive power of 2");
+
+ public:
+  Sequences() = default;
+
+  ~Sequences() {
+    for (auto& p : delay_delete_seqs_) {
+      if (p) {
+        delete p;
+        p = nullptr;
+      }
+    }
+    delete gating_sequences_.load();
+  }
+
+  Sequences(const Sequences& sequences) {
+    gating_sequences_ =
+        sequences.gating_sequences_.load(std::memory_order_relaxed);
+  }
+
+  Sequences& operator=(const Sequences& sequences) {
+    gating_sequences_ =
+        sequences.gating_sequences_.load(std::memory_order_relaxed);
+    return *this;
+  };
+
+  const std::vector<Sequence*>& get() {
+    return *(gating_sequences_.load(std::memory_order_relaxed));
+  }
+
+  void addGatingSequences(Sequence* sequence) {
+    std::vector<Sequence*>* current = nullptr;
+    std::vector<Sequence*>* updated = nullptr;
+    do {
+      if (!updated) {
+        delete updated;
+      }
+
+      current = gating_sequences_.load();
+      updated = new std::vector<Sequence*>(*current);
+      updated->push_back(sequence);
+    } while (!gating_sequences_.compare_exchange_strong(current, updated));
+
+    delay_delete(current);
+  }
+
+  void delGatingSequence(Sequence* sequence) {
+    std::vector<Sequence*>* current = nullptr;
+    std::vector<Sequence*>* updated = nullptr;
+    do {
+      if (!updated) {
+        delete updated;
+      }
+
+      current = gating_sequences_.load();
+      updated = new std::vector<Sequence*>(*current);
+      updated->push_back(sequence);
+      auto itr = std::remove(updated->begin(), updated->end(), sequence);
+      if (itr != updated->end()) updated->erase(itr, updated->end());
+    } while (!gating_sequences_.compare_exchange_strong(current, updated));
+
+    delay_delete(current);
+  }
+
+ protected:
+  void delay_delete(std::vector<Sequence*>* p) {
+    int index = delay_delete_last_.fetch_add(1) & (SEQUENCES_MAX_SEQS - 1);
+    if (delay_delete_seqs_[index] != nullptr) {
+      delete delay_delete_seqs_[index];
+    }
+    delay_delete_seqs_[index] = p;
+  }
+
+ private:
+  std::atomic<std::vector<Sequence*>*> gating_sequences_{
+      new std::vector<Sequence*>()};
+  std::array<std::vector<Sequence*>*, SEQUENCES_MAX_SEQS> delay_delete_seqs_{
+      nullptr};
+  std::atomic_int delay_delete_last_{0};
 };
 
 };  // namespace disruptor

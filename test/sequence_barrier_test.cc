@@ -35,18 +35,19 @@ namespace disruptor {
 namespace test {
 
 struct SequenceBarrierFixture {
-  SequenceBarrierFixture() : barrier(cursor, dependents) {}
+  SequenceBarrierFixture() : barrier(cursor) {}
 
   Sequence cursor;
   Sequence sequence_1;
   Sequence sequence_2;
   Sequence sequence_3;
-  std::vector<Sequence*> dependents;
+  Sequences dependents;
   SequenceBarrier<> barrier;
 
-  std::vector<Sequence*> allDependents() {
-    std::vector<Sequence*> d = {&sequence_1, &sequence_2, &sequence_3};
-    return d;
+  void allDependents() {
+    dependents.addGatingSequences(&sequence_1);
+    dependents.addGatingSequences(&sequence_2);
+    dependents.addGatingSequences(&sequence_3);
   }
 };
 
