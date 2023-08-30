@@ -28,7 +28,10 @@
 #endif                               // NOLINT
 #define ATOMIC_SEQUENCE_PADDING_LENGTH \
   (CACHE_LINE_SIZE_IN_BYTES - sizeof(std::atomic<int64_t>)) / 8
-#define SEQUENCE_PADDING_LENGTH (CACHE_LINE_SIZE_IN_BYTES - sizeof(int64_t)) / 8
+#define SEQUENCE_PADDING_LENGTH                              \
+  (CACHE_LINE_SIZE_IN_BYTES - sizeof(std::atomic<int64_t>) - \
+   sizeof(std::string)) /                                    \
+      8
 
 #ifndef DISRUPTOR_SEQUENCE_H_  // NOLINT
 #define DISRUPTOR_SEQUENCE_H_  // NOLINT
@@ -42,6 +45,7 @@
 
 namespace disruptor {
 
+// TODO by lipson, int64_t ->uint64_t for cycle-able
 // special cursor values
 constexpr int64_t kInitialCursorValue = -1L;
 constexpr int64_t kAlertedSignal = -2L;
@@ -54,8 +58,9 @@ class Sequence {
   // Construct a sequence counter that can be tracked across threads.
   //
   // @param initial_value for the counter.
-  Sequence(int64_t initial_value = kInitialCursorValue)
-      : sequence_(initial_value) {}
+  Sequence(int64_t initial_value = kInitialCursorValue,
+           const std::string& name = "")
+      : sequence_(initial_value), name_(name) {}
 
   // Get the current value of the {@link Sequence}.
   //
@@ -71,6 +76,16 @@ class Sequence {
     sequence_.store(value, std::memory_order::memory_order_release);
   }
 
+  // Try to compare and set the current value of the {@link Sequence}.
+  //
+  // @param the value to which the {@link Sequence} will be set.
+  // @return success or failure
+  bool compare_and_swap(int64_t old_value, int64_t new_value) {
+    return (sequence_.compare_exchange_weak(old_value, new_value,
+                                            std::memory_order_acq_rel,
+                                            std::memory_order_relaxed));
+  }
+
   // Increment and return the value of the {@link Sequence}.
   //
   // @param increment the {@link Sequence}.
@@ -81,20 +96,21 @@ class Sequence {
            increment;
   }
 
+  std::string name() const { return name_; }
+
  private:
   // padding
-  int64_t padding0_[ATOMIC_SEQUENCE_PADDING_LENGTH];
+  int64_t padding0_[SEQUENCE_PADDING_LENGTH];
   // members
   std::atomic<int64_t> sequence_;
+  std::string name_;
   // padding
-  int64_t padding1_[ATOMIC_SEQUENCE_PADDING_LENGTH];
+  int64_t padding1_[SEQUENCE_PADDING_LENGTH];
 
   DISALLOW_COPY_MOVE_AND_ASSIGN(Sequence);
 };
 
-int64_t GetMinimumSequence(const std::vector<Sequence*>& sequences) {
-  int64_t minimum = LONG_MAX;
-
+int64_t GetMinimumSequence(const std::vector<Sequence*>& sequences, int64_t minimum = LONG_MAX) {
   for (Sequence* sequence_ : sequences) {
     const int64_t sequence = sequence_->sequence();
     minimum = minimum < sequence ? minimum : sequence;
@@ -104,7 +120,7 @@ int64_t GetMinimumSequence(const std::vector<Sequence*>& sequences) {
 };
 
 void DumpMinimumSequence(const std::vector<Sequence*>& sequences,
-                         const int64_t& wrap_point) {
+                         const int64_t& write_point) {
   int64_t minimum = LONG_MAX;
 
   Sequence* min_address = nullptr;
@@ -117,8 +133,11 @@ void DumpMinimumSequence(const std::vector<Sequence*>& sequences,
   }
 
   if (min_address) {
-    std::cerr << "minimum seq: " << minimum << " address: " << min_address
-              << std::endl;
+    // TODO to more performance
+    fprintf(stderr,
+            "reader lag! writer seq(%ld) reader min seq(%ld) name(%s) "
+            "address(%p)\n",
+            write_point, minimum, min_address->name().c_str(), min_address);
   }
 }
 

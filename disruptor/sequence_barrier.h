@@ -29,8 +29,8 @@
 #include <memory>
 #include <vector>
 
-#include "disruptor/wait_strategy.h"
 #include "disruptor/sequence.h"
+#include "disruptor/wait_strategy.h"
 
 namespace disruptor {
 
@@ -39,19 +39,24 @@ template <typename W = kDefaultWaitStrategy>
 class SequenceBarrier {
  public:
   // only cursor
-  SequenceBarrier(const Sequence& cursor)
-      : cursor_(cursor), sequences_(EMPTY_SEQUENCES), alerted_(false) {}
+  SequenceBarrier(W& wait_strategy, const Sequence& cursor)
+      : wait_strategy_(wait_strategy),
+        cursor_(cursor),
+        sequences_(EMPTY_SEQUENCES),
+        alerted_(false) {}
 
-  SequenceBarrier(const Sequence& cursor,
+  SequenceBarrier(W& wait_strategy, const Sequence& cursor,
                   Sequences& dependents)
-      : cursor_(cursor), sequences_(dependents), alerted_(false) {}
+      : wait_strategy_(wait_strategy),
+        cursor_(cursor),
+        sequences_(dependents),
+        alerted_(false) {}
 
-  inline void set_sequences(Sequences& dependents) {
-      sequences_ = dependents;
-  }
+  inline void set_sequences(Sequences& dependents) { sequences_ = dependents; }
 
   int64_t WaitFor(const int64_t& sequence) {
-    return wait_strategy_.WaitFor(sequence, cursor_, sequences_.get(), alerted_);
+    return wait_strategy_.WaitFor(sequence, cursor_, sequences_.get(),
+                                  alerted_);
   }
 
   template <class R, class P>
@@ -72,10 +77,9 @@ class SequenceBarrier {
   }
 
  private:
-  W wait_strategy_;
+  W& wait_strategy_;
   const Sequence& cursor_;
-//  std::vector<Sequence*> dependents_;
-  Sequences &sequences_;
+  Sequences& sequences_;
   std::atomic<bool> alerted_;
 };
 

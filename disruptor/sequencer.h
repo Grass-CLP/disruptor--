@@ -40,7 +40,7 @@ template <typename T, size_t N = kDefaultRingBufferSize,
           typename C = kDefaultClaimStrategy, typename W = kDefaultWaitStrategy>
 class Sequencer {
  public:
-  using RingBufferT = RingBuffer<T, N> ;
+  using RingBufferT = RingBuffer<T, N>;
   using TType = T;
   using Barrier = SequenceBarrier<W>;
 
@@ -72,12 +72,18 @@ class Sequencer {
   //
   // @param sequences_to_track this barrier will track.
   // @return the barrier gated as required.
-  SequenceBarrier<W> NewBarrier(const std::vector<Sequence*>& dependents) {
-    return SequenceBarrier<W>(cursor_, dependents);
-  }
+  //  SequenceBarrier<W> NewBarrier(const std::vector<Sequence*>& dependents) {
+  //    return SequenceBarrier<W>(cursor_, dependents);
+  //  }
+  //
+  //  SequenceBarrier<W> NewBarrier() {
+  //    return SequenceBarrier<W>(cursor_);
+  //  }
 
-  SequenceBarrier<W> NewBarrier() {
-    return SequenceBarrier<W>(cursor_);
+  std::unique_ptr<SequenceBarrier<W> > NewBarrier() {
+    std::unique_ptr<SequenceBarrier<W> > sb(
+        new SequenceBarrier<W>(wait_strategy_, cursor_));
+    return sb;
   }
 
   // Get the value of the cursor indicating the published sequence.
@@ -85,7 +91,7 @@ class Sequencer {
   // @return value of the cursor for events that have been published.
   int64_t GetCursor() { return cursor_.sequence(); }
 
-  Sequence &GetSequence() { return cursor_; }
+  Sequence& GetSequence() { return cursor_; }
 
   // Has the buffer capacity left to allocate another sequence. This is a
   // concurrent method so the response should only be taken as an indication
@@ -109,11 +115,15 @@ class Sequencer {
   // @param sequence to be published.
   void Publish(const int64_t& sequence, size_t delta = 1) {
     claim_strategy_.SynchronizePublishing(sequence, cursor_, delta);
-    const int64_t new_cursor = cursor_.IncrementAndGet(delta);
+    cursor_.IncrementAndGet(delta);
     wait_strategy_.SignalAllWhenBlocking();
   }
 
   T& operator[](const int64_t& sequence) { return ring_buffer_[sequence]; }
+
+  const T& operator[](const int64_t& sequence) const {
+    return ring_buffer_[sequence];
+  }
 
  private:
   // Members
