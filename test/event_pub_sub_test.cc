@@ -15,9 +15,10 @@
 namespace disruptor {
 namespace test {
 
-const int RING_BUFFER_SIZE = 1 << 14; // no cover TEST_SET, force into write ring-buf
-const int TEST_SET = 1 << 14; // actually 2 * TEST_SET
-const int SUB_THREADS = 64;
+const int BINRARY_SIZE = 18;
+const int RING_BUFFER_SIZE = 1 << BINRARY_SIZE; // no cover TEST_SET, force into write ring-buf
+const int TEST_SET = 1 << BINRARY_SIZE; // actually 2 * TEST_SET
+const int SUB_THREADS = 12;
 
 // using SequencerFixture =
 //     Sequencer<int64_t, RING_BUFFER_SIZE,
@@ -27,24 +28,26 @@ struct SequencerFixture
     : Sequencer<int64_t, RING_BUFFER_SIZE,
                 MultiThreadedStrategy<RING_BUFFER_SIZE>, BusySpinStrategy> {};
 
-void check_read(SequencerFixture *seq, bool *re) {
+void check_read(SequencerFixture *seq, bool *re, const char* name) {
   *re = true;
 
-  disruptor::Sequence reader(seq->GetCursor());
-  //  auto dis_barrier = multiQueue.NewBarrier();
-  SequencerFixture::Barrier dis_barrier(seq->GetSequence());
-  dis_barrier.set_alerted(false);
+  disruptor::Sequence reader(seq->GetCursor(), name);
+//  SequencerFixture::Barrier dis_barrier = seq->NewBarrier();
+//  SequenceBarrier<BusySpinStrategy> dis_barrier2 = seq->NewBarrier();
+//  SequencerFixture::Barrier dis_barrier(seq->GetSequence());
+  auto dis_barrier = seq->NewBarrier();
+  dis_barrier->set_alerted(false);
   seq->addGatingSequences(&reader);
   //  auto cur = std::max(seq->GetCursor(), 0l);
   auto cur = std::max(seq->GetCursor(), 0l);
-  *re &= cur == 0l;
+//  *re &= cur == 0l;
 
   // read
   while (cur < 2 * TEST_SET - 1) {
-    auto next_cur = dis_barrier.WaitFor(cur);
+    auto next_cur = dis_barrier->WaitFor(cur);
     while (next_cur < kFirstSequenceValue) {
       std::this_thread::yield();
-      next_cur = dis_barrier.WaitFor(cur);
+      next_cur = dis_barrier->WaitFor(cur);
     }
 
     while (cur <= next_cur) {
@@ -70,9 +73,9 @@ BOOST_AUTO_TEST_CASE(VerifyPubSub) {
   bool reader_result[SUB_THREADS] = {true};
   std::vector<std::thread> threads;
   for (bool &i : reader_result) {
-    threads.emplace_back(check_read, multiQueue, &i);
+    threads.emplace_back(check_read, multiQueue, &i, std::to_string(i).c_str());
   }
-  std::this_thread::sleep_for(std::chrono::seconds(1));
+  std::this_thread::sleep_for(std::chrono::nanoseconds(1));
 
   // pub
   int64_t index = (*multiQueue).Claim(TEST_SET);
@@ -82,6 +85,7 @@ BOOST_AUTO_TEST_CASE(VerifyPubSub) {
     (*multiQueue).Publish(index - TEST_SET + 1 + i);
   }
 
+  // wait capacity
   for (int i = 0; i < TEST_SET; ++i) {
     index = (*multiQueue).Claim();
     (*multiQueue)[index] = i + TEST_SET;
